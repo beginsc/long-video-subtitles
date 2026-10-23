@@ -2,7 +2,7 @@
 
 ## 当前能力边界
 
-默认由当前会话中的 GPT 执行视觉理解，与翻译、校对使用同一会话模型，不要求另配 OpenAI API 密钥。配置在 assets/vision-config.json：runner=current-session-gpt、model=inherit-current-session。该名称是技能的执行约定，不是 OpenAI API 模型 ID；脚本不会切换会话模型。
+默认由视觉子代理执行图像理解，继承主代理模型，不要求另配 OpenAI API 密钥。配置在 assets/vision-config.json：runner=current-session-gpt、model=inherit-current-session。这里保留现有脚本兼容值，“会话”指实际看图的执行代理会话，不限定为主代理；该名称是执行约定，不是 OpenAI API 模型 ID，也不是子代理调度开关。脚本不会创建子代理或切换模型，真实 agent_id 另记在工单和交接记录中。
 
 scripts/vision_workbench.py 负责 FFmpeg 抽帧/已有帧打包、帧哈希、时间戳和结果写回。GPT 通过实际可用的图像查看工具读取文件并执行画面理解及文字识读。脚本本身不推理、不调用付费 Vision API、不构建向量索引。当前模型必须支持图像输入；不能将“只有 ASR 密钥”或“文本模型能读图片文件名”视为视觉能力。不要用生成图片替代真实视频帧。
 
@@ -10,11 +10,11 @@ scripts/vision_workbench.py 负责 FFmpeg 抽帧/已有帧打包、帧哈希、�
 
 1. 准备视觉批次，读取其中的帧路径、frame_id、采样时间、相关源文和输入摘要。
 2. 用当前环境实际提供的本地图像查看工具加载每张帧。例如可用时调用 view_image，并将返回的图像内容交给模型；只拿到路径或 base64 文本而未显示图像不算完成。默认使用 original 细节，读小字时查看原始帧；必要时另生成局部裁剪并记录其来源。
-3. 当前 GPT 根据实际看到的图片生成场景/动作 observations、逐字可辨的 onscreen_text 和 uncertainties。ASR 只提供上下文，不是画面文字的答案。稀疏帧无法证明完整动作过程，勿自行补足。
+3. 视觉子代理根据实际看到的图片生成场景/动作 observations、逐字可辨的 onscreen_text 和 uncertainties。ASR 只提供上下文，不是画面文字的答案。稀疏帧无法证明完整动作过程，勿自行补足。
 4. 逐条输出结构化结果，写 viewed_frame_ids、实际图像工具、会话模型可知名称；不知道准确型号时写 current-session，不猜模型 ID。
-5. 用 apply 写回最新源文件。记录进入 visual_cues，后续翻译、校对、编辑共享。结果不能覆盖原文或时间轴；补充/改变视觉证据会清空相关定稿与校对记录，保留初译供重新核查。
+5. 视觉子代理只提交响应和实际看图记录；主代理验收后用 apply 写回最新源文件。记录进入 visual_cues，后续翻译、校对、编辑共享。结果不能覆盖原文或时间轴；补充/改变视觉证据会清空相关定稿与校对记录，保留初译供重新核查。
 
-当前会话无法接收图像时保存 unavailable 原因并继续不依赖视觉的工作。更换会话模型由用户/应用设置完成，不把 config 的 model 字符串当成模型切换功能。
+视觉子代理无法接收图像时，将能力缺失交回主代理按 [调度降级规则](subagent-workflow.md) 处理；只有其他执行者真实看图后才能记录其证据，不能将文字摘要记为本员工已看图。无可用图像能力则保存 unavailable 原因并继续不依赖视觉的工作。更换会话模型由用户/应用设置完成，不把 config 的 model 字符串当成模型切换功能。
 
 ## 命令与批次
 

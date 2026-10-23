@@ -2,6 +2,8 @@
 
 `scripts/subtitle_workbench.py` 需要 Python 3.9+ 和标准库，无网络调用。下文 `python` 指实际可用解释器，脚本路径应解析为本技能所在目录；项目文件路径以当前任务目录为准。Windows 有空格的绝对路径需引号，PowerShell 调用带引号解释器用 `&`。先执行 `--help` 查看真实参数。
 
+S12 的岗位调度见 [subagent-workflow.md](subagent-workflow.md)：员工在独占任务目录写阶段响应，主代理串行执行下列对正式稿件的 apply/bind。阶段响应协议和摘要算法不变；assignment/handoff/代理身份放调度侧文件，不插入已签名批次。并行同阶段响应按最新累计稿逐批 apply，下一阶段须重新 chunks；这些脚本不会自动创建子代理。
+
 ## 源数据
 
 新任务另加 `meta.quality_contract="evidence-v2"`，每条检查后写 `source_checks: []` 或具体疑点，结构见 [review-evidence.md](review-evidence.md)。旧稿不会自动冒充满足新协议。source_checks 计入校对摘要；开放疑点阻止 PASS/reviewed；UNCLEAR 转 reviewed 需要编辑响应中的 uncertainty_resolution 证据记录。triage 汇总待决队列。
@@ -21,9 +23,11 @@
 
 时间为整片整数毫秒。source 是此版本原文，原件另存；draft 初译，target 编辑定稿，review_status 为 pending/needs_review/reviewed。只有真正完成校对与编辑并写说明才标 reviewed；脚本不验证语言质量。拆合时增加 parent_ids，追溯最初 source.json ID。ASR words 原样保留在 asr_words，其中秒数仍相对块起点；asr_words_offset_ms 给出偏移，消费者须换算一次。
 
+字符级拆分另按 [字符级时间证据](character-timing-evidence.md) 保存对齐摘录、字符索引/偏移、构轴公式和实际参数，由主代理作为相关工单的默认附件传递。`asr_words` 保留原始词时间，不为匹配显示尾改写含标点的词尾；证据包属于项目侧文件，不改现有字幕、chunks/apply 或 semantic_windows 的数据形状，这些脚本也不自动补齐附件。
+
 import-srt/import-asr 以及 AssemblyAI 导出保持通用数据协议，不会自动填入 workflow 或声称看过视频。执行代理在导入后另存 source.context.v01.json，设置 `meta.workflow=vidove-inspired-v1`，按实际结果补充 vision_status、visual_cues、source_notes，以及上下文摘要；按 [领域术语协议](terminology.md) 完成 prepare、全片发现/联网和 bind，生成 source.terms.vNN.json 再分批。保留原始 source.json 作为 ID 覆盖基线。
 
-有视频时先按 [GPT 视觉执行协议](multimodal-context.md) 使用 vision_workbench.py 抽帧/打包→当前 GPT 实际看图→apply 写回。可逐批更新 source.context.vNN.json，未处理行保留原状态；全片该阶段处理完毕后再进入翻译。视觉 apply 保留现有 draft，但清空受影响的 target 和校对/编辑记录，需要核查初译是否应重译。
+有视频时先按 [GPT 视觉执行协议](multimodal-context.md) 使用 vision_workbench.py 抽帧/打包→视觉子代理实际看图→主代理验收并 apply 写回。可逐批更新 source.context.vNN.json，未处理行保留原状态；全片该阶段处理完毕后再进入翻译。视觉 apply 保留现有 draft，但清空受影响的 target 和校对/编辑记录，需要核查初译是否应重译。
 
 ## 导入与批次
 

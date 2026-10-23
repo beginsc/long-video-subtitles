@@ -3,7 +3,7 @@
 ViDove 源码核对日期：2026-09-06，参考提交 `88470bcb3d34f0f6da396ece0030b5374b6dbf47`。本技能为原创流程和脚本，没有复制或捆绑上游实现；研究时没有运行 ViDove 或安装其依赖。README 和代码有差异时以固定提交源码为准。
 
 - [ViDove 主流程](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/task.py)：分段→视觉→转写→原文预处理→翻译→后处理→校对→编辑→输出；纯 SRT 跳过音画。校对/编辑失败可保留初译。本技能保留草稿，但不会把失败阶段标成审定完成。
-- [视觉实现](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/vision/gpt_vision_agent.py)：对片段采样多帧并生成视觉描述。本技能采用当前会话 GPT 看帧，并增加原创 FFmpeg 抽帧、帧打包和证据写回脚本；未复制其独立 Vision API 客户端。
+- [视觉实现](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/vision/gpt_vision_agent.py)：对片段采样多帧并生成视觉描述。本技能采用视觉子代理在其会话中实际看帧，并增加原创 FFmpeg 抽帧、帧打包和证据写回脚本；未复制其独立 Vision API 客户端。
 - [翻译器](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/translators/translator.py)：翻译提示可结合近期译文、领域知识、网络资料和检索的视觉描述。本技能使用相关文件和时间索引，不声称已安装向量 RAG。
 - [校对器](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/editorial/proofreader.py)：主要输出建议；源文存疑标 UNCLEAR，不直接重写译文。本技能增加结构化 PASS/REVISE/UNCLEAR 与建议记录。
 - [编辑器](https://github.com/pigeonai-org/ViDove/blob/88470bcb3d34f0f6da396ece0030b5374b6dbf47/src/editorial/editor.py)：综合建议、音画线索、前后译文和领域记忆决定修订。本技能另保存采纳理由和未决问题。
@@ -24,4 +24,4 @@ ViDove 源码核对日期：2026-09-06，参考提交 `88470bcb3d34f0f6da396ece0
 - [LinguaGacha 术语匹配与检查](https://github.com/neavo/LinguaGacha/blob/c30941257b5eb68e98d901160ded67a1eb209494/src/shared/quality/glossary.ts)：稳定 entry_id、源文字段命中和目标译词应用诊断。本技能加入字幕 ID、领域/地区隔离及有效性摘要，不将目标包含固定词视为语义校对完成。
 - [LinguaGacha 候选提取提示](https://github.com/neavo/LinguaGacha/blob/c30941257b5eb68e98d901160ded67a1eb209494/builtin/analysis_prompt/template/zh/base.txt) 与 [术语规则](https://github.com/neavo/LinguaGacha/blob/c30941257b5eb68e98d901160ded67a1eb209494/builtin/agent/skill/glossary-rules/SKILL.md)：参考原文字面证据、实体边界、上下文消歧和长尾检查。其专用 workspace API 不属于本技能，未移植该工具链。
 
-初始少量名称另以 Blizzard/Valve 官方页面核验；每条来源、日期和译名选择理由保存在库自身。SC2 实况解说库现已根据用户提供的 AzureF1ow 四篇社区术语文章扩充，来源及修正说明见 [sc2-terminology.md](sc2-terminology.md)。它不是 ViDove 全词典的复刻，CS2 库也不宣称覆盖全部武器、地图和点位。运行时联网流程见 [terminology.md](terminology.md)，查询由当前会话工具执行，Python 脚本没有网络或付费模型调用。
+初始少量名称另以 Blizzard/Valve 官方页面核验；每条来源、日期和译名选择理由保存在库自身。SC2 实况解说库现已根据用户提供的 AzureF1ow 四篇社区术语文章扩充，来源及修正说明见 [sc2-terminology.md](sc2-terminology.md)。它不是 ViDove 全词典的复刻，CS2 库也不宣称覆盖全部武器、地图和点位。运行时联网流程见 [terminology.md](terminology.md)，查询由术语岗位实际可用的会话工具执行，Python 脚本没有网络或付费模型调用。

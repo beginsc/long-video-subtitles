@@ -1,4 +1,4 @@
 interface:
   display_name: "长视频字幕组"
-  short_description: "长视频本地化翻译、分阶段审校与单语字幕制作，支持断点续做"
-  default_prompt: "使用 $long-video-subtitles，按字幕组流程完成这个长视频的翻译、校对和字幕制作。"
+  short_description: "主代理统筹岗位子代理完成长视频翻译、校对与字幕制作，支持断点续做"
+  default_prompt: "使用 $long-video-subtitles，由主代理统筹，让翻译、校对、编辑等岗位子代理分工完成这个长视频的字幕制作。"
