@@ -1,0 +1,8 @@
+{
+  "status": "not_authorized",
+  "scope": "public_distribution_template",
+  "note": "Public package only. This record does not authorize any API request or transmission. Obtain authorization covering the actual project before creating its approval record.",
+  "prompt": "references/deepseek-polish-prompt-v1-user-reviewed.md",
+  "prompt_sha256": "98c7b8f8c27f3d49dfe42951cae403a281b7e5100cfec35c2cc974ac381970df",
+  "batch_submissions_authorized_by_this_record": false
+}

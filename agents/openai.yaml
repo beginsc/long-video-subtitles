@@ -1,0 +1,4 @@
+interface:
+  display_name: "长视频字幕组"
+  short_description: "长视频本地化翻译、分阶段审校与单语字幕制作，支持断点续做"
+  default_prompt: "使用 $long-video-subtitles，按字幕组流程完成这个长视频的翻译、校对和字幕制作。"
