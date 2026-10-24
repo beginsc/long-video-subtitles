@@ -4,6 +4,8 @@
 
 ## 上下文与文件
 
+首次安装的下载方式选择及素材入口见 [media-intake.md](media-intake.md)。主代理保存用户偏好并冻结本任务参数；素材员在独占目录直接登记文件或下载视频链接，交回 media-manifest.json、本地媒体和摘要。主代理验收后才派转写/视觉；成功下载不能记录为完成音画分析。
+
 工作目录按需包含 project.json、source.json、terminology/、terminology-library/、context.md、visual-memory.json、frames/、manifest.json、版本稿件、batches/、exports/。project 记录语言、地区、领域、源文件 SHA-256、实际媒体时长、工具/模型版本、视觉能力及制作阈值。manifest 分别记录 media、asr、vision、preprocess、terminology-discovery、terminology-research、terminology-bind、translate、proofread、edit、layout、qa 的状态、覆盖范围、工件摘要及下一步，不存密钥。视觉缺失要记录原因，不能默认为已执行。
 
 术语在原文整理与记忆阶段执行全片候选发现、联网核验、领域分库及逐次消歧，具体数据协议和命令见 [terminology.md](terminology.md)。先生成 source.terms.vNN.json，再分批翻译；各批自动带入相关 term_context。context 另记章节梗概、人物指代、风格和疑点。已确认译名变更要创建新版本、重绑并重校，不能为一致性扩大已知错译。

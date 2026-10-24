@@ -4,7 +4,7 @@
 
 这是供 Codex 等支持技能文件的智能体使用的 **Skill 与 Python 工具集**。主代理负责统筹，翻译、校对和编辑由不同的 sub-agent（子代理）实例依次执行；默认继承当前模型，脚本处理数据、证据、时间轴与格式检查。
 
-当前版本：**S12.1 · 2026-10-24**。新增岗位工单与交接协议；涉及字符级拆分时，默认随工单附上时间来源和构轴依据。
+当前版本：**S13 · 2026-10-24**。新增素材入口和首次安装下载方式选择：本地文件直接分析；视频链接通过本地 yt-dlp 或远程 SnapAny API 下载。岗位子代理、默认时间证据和断点交接继续启用。
 
 [公开介绍页](https://beginsc.github.io/long-video-subtitles/) · [技能入口](SKILL.md) · [工作流程](references/workflow.md) · [脚本用法](references/data-and-tools.md) · [岗位交接](references/subagent-workflow.md) · [字符级时间证据](references/character-timing-evidence.md)
 
@@ -27,7 +27,7 @@
 在 Codex 对话中可以使用内置安装器：
 
 ```text
-使用 $skill-installer 安装 https://github.com/beginsc/long-video-subtitles 根目录中的技能。
+使用 $skill-installer 安装 https://github.com/beginsc/long-video-subtitles 根目录中的技能。安装后引导我选择视频链接的下载方式：本地 yt-dlp 或远程 SnapAny API，并保存偏好。
 ```
 
 也可手动克隆到个人技能目录。当前 Codex 的个人技能目录是 `~/.agents/skills`；已有安装同名技能时，先核对旧版本，避免重复安装。目录说明以 [OpenAI 官方文档](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) 为准。
@@ -47,6 +47,26 @@ git clone https://github.com/beginsc/long-video-subtitles.git ~/.agents/skills/l
 ```
 
 若技能没有出现，重启 Codex。其他智能体需按其技能目录约定安装；本仓库未验证所有客户端的兼容性。
+
+## 首次配置视频下载方式
+
+安装后选择一次，后续任务沿用。下载方式与 ASR 后端分开配置：
+
+| 选择 | 下载过程 | 需要准备 |
+| --- | --- | --- |
+| **本地 yt-dlp** | 在你的电脑解析和下载视频网站链接 | yt-dlp、FFmpeg/ffprobe；部分网站另需 JS 运行时或登录 cookie |
+| **远程 SnapAny API** | 将视频链接发给 SnapAny 解析，取得直链后下载到你的电脑 | 自己的 `SNAPANY_API_KEY` 环境变量、FFmpeg/ffprobe；解析可能计费 |
+
+在技能目录运行，或把脚本换成绝对路径：
+
+```bash
+python scripts/media_intake.py configure
+python scripts/media_intake.py check
+```
+
+也可以对智能体说「配置 long-video-subtitles 的视频下载方式」，让它展示两项供你选择。已选好可直接运行 `configure --backend local` 或 `configure --backend remote`。普通克隆/文件复制不会自动弹出安装向导，首次使用技能会补查配置；只有本地素材时可以先分析，链接任务需先选择。
+
+偏好存放在用户配置目录，升级技能不会重置；单次任务可临时覆盖。密钥只在本机配置，不要粘贴进聊天、提交 GitHub 或写进技能文件。完整准备步骤、切换方式和下载故障处理见 [素材入口说明](references/media-intake.md)。
 
 ## 开始使用
 
@@ -68,11 +88,19 @@ git clone https://github.com/beginsc/long-video-subtitles.git ~/.agents/skills/l
 
 项目素材和输出保存在独立工作目录。不要放进技能安装目录或提交到本仓库。
 
+本地视频文件直接进入分析，链接先下载后分析。例如：
+
+```text
+使用 $long-video-subtitles，给这个 YouTube / B 站视频制作简体中文字幕：<视频链接>
+按首次配置的下载方式取得视频，再进行音画分析、翻译和审校。
+```
+
 ## 依赖与后端
 
 | 使用场景 | 需要准备 |
 | --- | --- |
 | 已有 SRT 的翻译 / 校对 | 默认使用岗位子代理与 Python；无音频时保留时间轴 |
+| 视频链接下载 | 本地 yt-dlp 或远程 SnapAny API，见[首次配置](references/media-intake.md) |
 | 视频抽帧、音频处理 | FFmpeg / ffprobe；有图像输入能力的会话 |
 | 本机 WhisperX | 独立部署的运行环境、模型和兼容运行器，见[说明](references/whisperx-local.md) |
 | AssemblyAI | 自行配置 API 凭据与实际任务授权，见[说明](references/assemblyai.md) |

@@ -2,6 +2,8 @@
 
 ## 检查与抽样
 
+媒体来源先按 [素材入口与下载选择](media-intake.md) 处理：本地文件直接使用，视频网站链接由已配置的 yt-dlp 或 SnapAny 获取本地文件，验收 media-manifest.json 后进入下列步骤。下载后端与 ASR 后端相互独立，不因为选了远程下载就自动上传音频转写。
+
 有可信字幕就复用。ffprobe JSON 检查媒体时长、音轨语言/数量和字幕轨，原片只读，选择真实讲话音轨。辅助脚本仅依赖 Python 标准库；FFmpeg/ffprobe、ASR 和模型权重另行提供。
 
 优先用户指定的 ASR，或复用可用的本地模型、ViDove、VideoLingo。已提供可选 [AssemblyAI 在线适配器](assemblyai.md) 和 [WhisperX SSH 服务适配器](whisperx.md)，配置位于 assets/asr-backends.json；默认不自动选择云端后端。密钥从环境变量或本机用户的 DPAPI 加密凭据读取，配置与分享包不含密钥。均无可用后端时说明缺少的依赖；不为创建技能安装 GPU 驱动或大型模型。不能伪造 ASR JSON。

@@ -4,6 +4,10 @@
 
 S12 的岗位调度见 [subagent-workflow.md](subagent-workflow.md)：员工在独占任务目录写阶段响应，主代理串行执行下列对正式稿件的 apply/bind。阶段响应协议和摘要算法不变；assignment/handoff/代理身份放调度侧文件，不插入已签名批次。并行同阶段响应按最新累计稿逐批 apply，下一阶段须重新 chunks；这些脚本不会自动创建子代理。
 
+## 素材入口
+
+`scripts/media_intake.py` 提供 `configure/check/acquire/verify`：本地文件直接登记，视频网站链接用已选的 yt-dlp 或 SnapAny 下载，输出独立的 media-manifest.json；详细依赖、首次选择和失败重试见 [media-intake.md](media-intake.md)。此工具不启动 ASR、不提取自动字幕、不替代实际音画核验，也不改下文字幕数据协议。
+
 ## 源数据
 
 新任务另加 `meta.quality_contract="evidence-v2"`，每条检查后写 `source_checks: []` 或具体疑点，结构见 [review-evidence.md](review-evidence.md)。旧稿不会自动冒充满足新协议。source_checks 计入校对摘要；开放疑点阻止 PASS/reviewed；UNCLEAR 转 reviewed 需要编辑响应中的 uncertainty_resolution 证据记录。triage 汇总待决队列。
