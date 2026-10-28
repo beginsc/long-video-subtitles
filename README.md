@@ -95,6 +95,6 @@ python -B -m unittest discover -s scripts -p "test_*.py"
 
 ## 设计来源与许可证
 
-字幕制作流程参考 ViDove、VideoLingo 等项目；[历史来源记录](https://github.com/beginsc/long-video-subtitles/blob/cde22e07a0302afb5342de297a948b3a9dffc9ee/references/project-sources.md)保留固定提交和当时的设计说明。S17 的专家协作设计还参考了用户提供的 `video-translation-summarization` 项目；本仓库不捆绑该项目、第三方模型或基准数据。SC2 起始词库保留每条记录的来源与适用范围。
+字幕制作流程参考 ViDove、VideoLingo 等项目；[历史来源记录](https://github.com/beginsc/long-video-subtitles/blob/cde22e07a0302afb5342de297a948b3a9dffc9ee/references/project-sources.md)保留固定提交和当时的设计说明。本仓库不捆绑该项目、第三方模型或基准数据。SC2 起始词库保留每条记录的来源与适用范围。
 
 本项目采用 **[MIT 开源协议](LICENSE)**，版权署名为 `2026 beginsc and contributors`。第三方工具、模型、视频和评测数据仍适用各自的许可证。MIT 标准文本见 [Open Source Initiative](https://opensource.org/license/mit)。
