@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "runner": "current-session-gpt",
-  "model": "inherit-current-session",
-  "image_detail": "original",
-  "frames_per_cue": 2,
-  "max_cues_per_batch": 12
-}

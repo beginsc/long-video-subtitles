@@ -1,0 +1,143 @@
+{
+  "media_sha256": "c18a8f7ec443c4489e289a228e74b489b150a42846728d20c0ab8a0e9848db89",
+  "reference_sha256": "3435c4ca7a35e49d72eaa9a9fc5328921da18b549e0fb64f0aae61f604505315",
+  "data_sha256": "ef9b592a96769aad28c1587e92c151df1fa108a8c25b9f5b98cfe6365d6a4877",
+  "versions": {
+    "sacrebleu": "2.5.1",
+    "subtitle-edit-rate": "0.4.0",
+    "jiwer": "4.0.0",
+    "numpy": "2.5.2"
+  },
+  "signatures": {
+    "document_BLEU": "nrefs:1|case:mixed|eff:no|tok:zh|smooth:exp|version:2.5.1",
+    "document_chrF": "nrefs:1|case:mixed|eff:yes|nc:6|nw:0|space:no|version:2.5.1"
+  },
+  "metrics": {
+    "SubER": {
+      "S09": 60.807,
+      "WhisperX": 64.708,
+      "MAI": 67.362,
+      "MAI_minus_WhisperX": 2.654,
+      "MAI_minus_S09": 6.555,
+      "better": "lower"
+    },
+    "t-BLEU": {
+      "S09": 14.686,
+      "WhisperX": 11.672,
+      "MAI": 10.075,
+      "MAI_minus_WhisperX": -1.597,
+      "MAI_minus_S09": -4.611,
+      "better": "higher"
+    },
+    "t-chrF": {
+      "S09": 15.851,
+      "WhisperX": 13.588,
+      "MAI": 12.259,
+      "MAI_minus_WhisperX": -1.329,
+      "MAI_minus_S09": -3.592,
+      "better": "higher"
+    },
+    "AS-BLEU": {
+      "S09": 17.216,
+      "WhisperX": 14.264,
+      "MAI": 12.487,
+      "MAI_minus_WhisperX": -1.777,
+      "MAI_minus_S09": -4.729,
+      "better": "higher"
+    },
+    "AS-chrF": {
+      "S09": 17.875,
+      "WhisperX": 15.37,
+      "MAI": 14.064,
+      "MAI_minus_WhisperX": -1.306,
+      "MAI_minus_S09": -3.811,
+      "better": "higher"
+    },
+    "document_BLEU_zh": {
+      "S09": 20.740379891782545,
+      "WhisperX": 18.72694573930908,
+      "MAI": 17.341138228986377,
+      "MAI_minus_WhisperX": -1.385808,
+      "MAI_minus_S09": -3.399242,
+      "better": "higher"
+    },
+    "document_chrF": {
+      "S09": 23.047778518981925,
+      "WhisperX": 21.655126615883017,
+      "MAI": 21.076512941196714,
+      "MAI_minus_WhisperX": -0.578614,
+      "MAI_minus_S09": -1.971266,
+      "better": "higher"
+    }
+  },
+  "edit_statistics": {
+    "S09": {
+      "num_reference_words": 7569,
+      "num_reference_breaks": 532,
+      "num_shifts": 437,
+      "num_word_deletions": 1917,
+      "num_break_deletions": 26,
+      "num_word_insertions": 275,
+      "num_break_insertions": 76,
+      "num_word_substitutions": 2195,
+      "num_break_substitutions": 0
+    },
+    "WhisperX": {
+      "num_reference_words": 7569,
+      "num_reference_breaks": 532,
+      "num_shifts": 480,
+      "num_word_deletions": 1988,
+      "num_break_deletions": 141,
+      "num_word_insertions": 258,
+      "num_break_insertions": 4,
+      "num_word_substitutions": 2371,
+      "num_break_substitutions": 0
+    },
+    "MAI": {
+      "num_reference_words": 7569,
+      "num_reference_breaks": 532,
+      "num_shifts": 552,
+      "num_word_deletions": 1860,
+      "num_break_deletions": 127,
+      "num_word_insertions": 266,
+      "num_break_insertions": 6,
+      "num_word_substitutions": 2646,
+      "num_break_substitutions": 0
+    }
+  },
+  "limits": [
+    "Known repeated sample; not a blinded test",
+    "Same r4.2 rules and identical audio chunks, but source preparation, wording and segmentation are regenerated; not a pure isolated ASR accuracy experiment",
+    "Latest persistent terms contain six names/maps already verified during the prior production",
+    "Scores measure agreement with a reference, not accuracy percentage",
+    "Only local metrics; no neural or remote evaluator requested"
+  ],
+  "sample": "sc2/29_30",
+  "youtube_id": "TJezGProI74",
+  "source_language": "en",
+  "target_locale": "zh-CN",
+  "source_test_date": "2026-10-28",
+  "published_date": "2026-10-29",
+  "current_skill": "S17 Team r4.3 test",
+  "current_skill_full_video_benchmark_run": false,
+  "runs": {
+    "S09": {
+      "status": "draft",
+      "cues": 582
+    },
+    "r4.2_WhisperX": {
+      "status": "final",
+      "cues": 395
+    },
+    "r4.2_MAI": {
+      "status": "final",
+      "cues": 411
+    }
+  },
+  "not_run": [
+    "COMET",
+    "BLEURT",
+    "BERTScore",
+    "SubSONAR"
+  ]
+}

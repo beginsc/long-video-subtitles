@@ -1,4 +1,4 @@
 interface:
-  display_name: "长视频字幕组"
-  short_description: "主代理统筹岗位子代理完成长视频翻译、校对与字幕制作，支持断点续做"
-  default_prompt: "使用 $long-video-subtitles，由主代理统筹，让翻译、校对、编辑等岗位子代理分工完成这个长视频的字幕制作。"
+  display_name: "长视频字幕组 · S17 Team 候选"
+  short_description: "组长带领稳定的专家组员完成跨领域长视频字幕，直接修订并按实际影响质检"
+  default_prompt: "使用 $long-video-subtitles，由主 agent 担任组长，安排专家子 agent 完成这个长视频的字幕制作。"

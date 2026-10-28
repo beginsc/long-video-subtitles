@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "libraries": [
+    {
+      "domain": "sc2",
+      "source_language": "en",
+      "target_locale": "zh-CN",
+      "profile": "commentary",
+      "path": "assets/glossaries/sc2/en-zh-CN.json",
+      "entries": 330,
+      "version": "2026-09-12.1",
+      "description": "StarCraft II multiplayer commentary, simplified Chinese player terminology"
+    }
+  ]
+}

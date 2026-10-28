@@ -1,134 +1,100 @@
 # 长视频字幕组 · Long Video Subtitles
 
-将长视频、音频和已有字幕，按「转写 → 术语核验 → 翻译 → 校对 → 编辑 → 时间轴 → 交付」流程制作成可追溯的字幕。
+**当前版本：S17 Team r4.3 · 测试版 · 2026-10-29。** S17 正在验证流程和字幕质量，尚未作为稳定版发布。
 
-这是供 Codex 等支持技能文件的智能体使用的 **Skill 与 Python 工具集**。主代理负责统筹，翻译、校对和编辑由不同的 sub-agent（子代理）实例依次执行；默认继承当前模型，脚本处理数据、证据、时间轴与格式检查。
+[公开介绍页](https://beginsc.github.io/long-video-subtitles/) · [版本更新历史](CHANGELOG.md) · [回退到 S13](#回退到-s13) · [MIT 许可证](LICENSE)
 
-当前版本：**S13 · 2026-10-24**。新增素材入口和首次安装下载方式选择：本地文件直接分析；视频链接通过本地 yt-dlp 或远程 SnapAny API 下载。岗位子代理、默认时间证据和断点交接继续启用。
+主 agent 担任字幕组组长，源稿与语境专家、译者、独立审校专家协作，将电影、剧集、YouTube 视频、音频或已有字幕制作成自然准确的单语或双语字幕。各岗位同时承担目标语言本地化职责，脚本负责可确定的文件、覆盖和时间检查。
 
-[公开介绍页](https://beginsc.github.io/long-video-subtitles/) · [技能入口](SKILL.md) · [工作流程](references/workflow.md) · [脚本用法](references/data-and-tools.md) · [岗位交接](references/subagent-workflow.md) · [字符级时间证据](references/character-timing-evidence.md)
+## S17 的工作方式
 
-## 能做什么
+- 按完整场景、话题和论证分工，维护章节、人物与前后文，按具体疑点听音、看画面、查资料。
+- 译者交成稿，另一位专家审校并直接修订；默认一次独立审校，仅针对实际问题返工。
+- 简中按简体中文资料核对通行术语，口语自然；句内短停顿用空格，显示字幕默认不用断句逗号和句号。
+- 选手 ID、网名默认保留原文；有核实的官方译名或原片实际玩名字梗时再局部处理。
+- 根据领域、语言地区和语域自动复用持久词库，新核对的可复用词条继续积累。内置 S15 保留的 SC2 简中实况起始库，共 330 条；其他领域按需建立和复用。
+- 支持保留原轴或依据真实时间证据拆合；已有词范围可检查缺口、重复和越界，导出回读可生成制作 ID 与成品编号映射。
+- 默认简中单语 SRT 与简短制作说明；双语、VTT、ASS 和审校 CSV 按需求生成。保存实际进度，支持中断续做。
 
-- **长片分批与续做**：保存版本、稳定 ID、输入摘要及批次状态，中断后核对工件继续。
-- **音画证据结合**：抽帧、原音疑点队列和证据关联；明确区分实际核验、跳过与不可用。
-- **领域术语一致性**：发现、核验、绑定、审计全片用词；附 SC2 / CS2 初始词库及来源。
-- **岗位子代理协作**：翻译、校对、编辑使用不同实例；主代理核验工单、真实代理身份和输入输出摘要后，依次合并版本。
-- **字符时间可追溯**：字符级拆分随工单附原对齐摘录、时间换算、边界公式及显示延长规则，相关邻条和后续岗位一并携带。
-- **自然的中文字幕**：按受众与表达方式选择语体，保留事实、限定、否定、因果和信息顺序。
-- **字幕制作**：支持单语或双语 SRT / VTT / ASS，保留原时间轴或依据真实音频重建。
+[技能入口](SKILL.md) · [岗位分工](references/team.md) · [语言与本地化](references/language.md) · [持久领域词库](references/terminology.md) · [时间轴与质检](references/production.md) · [文件和工具](references/files.md)
 
-适用于课程、访谈、纪录片、演讲、游戏实况和赛事解说。默认目标为简体中文，主交付为单语 SRT 与独立审校 CSV；双语字幕可作为审查版。
+## 安装测试版
 
-## 安装
+需要能读取 Skill、执行 Python 并调度真实子 agent 的环境。脚本使用 Python 标准库，在 Python 3.12 环境验证；处理媒体另需 FFmpeg/ffprobe，下载器、ASR、模型和服务凭据按所选方式准备。
 
-需要 Git，以及能够读取技能、执行 Python、按需查看图像和搜索网页的智能体环境。默认岗位流程还需要可用的子代理调度能力。Python 工具在 3.12 环境验证。
-
-在 Codex 对话中可以使用内置安装器：
+在支持技能安装器的 Codex 对话中：
 
 ```text
-使用 $skill-installer 安装 https://github.com/beginsc/long-video-subtitles 根目录中的技能。安装后引导我选择视频链接的下载方式：本地 yt-dlp 或远程 SnapAny API，并保存偏好。
+使用 $skill-installer 安装 https://github.com/beginsc/long-video-subtitles 根目录中的技能。
+这是 S17 r4.3 测试版。已有同名技能时先保留旧版，再按当前宿主的技能目录安装。
+沿用我已有的视频下载和 ASR 偏好，缺少配置时再分别选择。
 ```
 
-也可手动克隆到个人技能目录。当前 Codex 的个人技能目录是 `~/.agents/skills`；已有安装同名技能时，先核对旧版本，避免重复安装。目录说明以 [OpenAI 官方文档](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) 为准。
-
-**Windows PowerShell**
-
-```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE/.agents/skills" | Out-Null
-git clone https://github.com/beginsc/long-video-subtitles.git "$env:USERPROFILE/.agents/skills/long-video-subtitles"
-```
-
-**macOS / Linux**
+手动方式：将仓库克隆到当前宿主的技能目录。已有同名安装时先备份，不把两个版本叠在同一个目录，以免留下旧脚本。
 
 ```bash
-mkdir -p ~/.agents/skills
-git clone https://github.com/beginsc/long-video-subtitles.git ~/.agents/skills/long-video-subtitles
+git clone https://github.com/beginsc/long-video-subtitles.git long-video-subtitles
 ```
 
-若技能没有出现，重启 Codex。其他智能体需按其技能目录约定安装；本仓库未验证所有客户端的兼容性。
-
-## 首次配置视频下载方式
-
-安装后选择一次，后续任务沿用。下载方式与 ASR 后端分开配置：
-
-| 选择 | 下载过程 | 需要准备 |
-| --- | --- | --- |
-| **本地 yt-dlp** | 在你的电脑解析和下载视频网站链接 | yt-dlp、FFmpeg/ffprobe；部分网站另需 JS 运行时或登录 cookie |
-| **远程 SnapAny API** | 将视频链接发给 SnapAny 解析，取得直链后下载到你的电脑 | 自己的 `SNAPANY_API_KEY` 环境变量、FFmpeg/ffprobe；解析可能计费 |
-
-在技能目录运行，或把脚本换成绝对路径：
+下载支持本地 yt-dlp、远程 SnapAny 或自定义命令适配器。ASR 支持本地 WhisperX、远程 MAI-Transcribe-2 或自定义服务；两项偏好独立保存。不会替新用户默认选择收费服务，也不随技能升级重置配置。
 
 ```bash
 python scripts/media_intake.py configure
 python scripts/media_intake.py check
+python scripts/asr_workflow.py configure
+python scripts/asr_workflow.py check
 ```
 
-也可以对智能体说「配置 long-video-subtitles 的视频下载方式」，让它展示两项供你选择。已选好可直接运行 `configure --backend local` 或 `configure --backend remote`。普通克隆/文件复制不会自动弹出安装向导，首次使用技能会补查配置；只有本地素材时可以先分析，链接任务需先选择。
-
-偏好存放在用户配置目录，升级技能不会重置；单次任务可临时覆盖。密钥只在本机配置，不要粘贴进聊天、提交 GitHub 或写进技能文件。完整准备步骤、切换方式和下载故障处理见 [素材入口说明](references/media-intake.md)。
+本地素材不要求先配置下载，已有字幕不要求先配置 ASR。命令参数、MAI 区域与环境变量、旧配置复用见[媒体与 ASR](references/media.md)。`check` 仅检查本机配置和依赖，不代表云端鉴权或推理已经成功。
 
 ## 开始使用
 
 ```text
 使用 $long-video-subtitles，给这个视频制作简体中文字幕。
-领域是星际争霸 2，面向 B 站观众，输出单语 SRT，另附双语审查版。
-素材路径：<你的文件路径>
+面向普通中文观众，输出单语 SRT。素材：<文件路径或视频链接>
 ```
 
 ```text
-使用 $long-video-subtitles，只校对这个 SRT，保留原时间轴。
-检查术语、遗漏、否定和因果，另存修改版并给出审校记录。
+使用 $long-video-subtitles，只校对这个 SRT，保留原编号和时间轴。
+检查意思、术语、否定和指代，保存修订稿并说明实质修改。
 ```
 
 ```text
-使用 $long-video-subtitles，继续 <项目目录> 中上次未完成的字幕任务。
-先核对素材、版本与批次状态，再从首个未完成阶段继续。
+使用 $long-video-subtitles，继续 <项目目录> 中未完成的任务。
+读取项目状态和当前稿，只补未完成工作。
 ```
 
-项目素材和输出保存在独立工作目录。不要放进技能安装目录或提交到本仓库。
+素材、项目输出、个人词库和凭据放在技能目录之外。S17 的工作文件结构与 S13 不同；旧项目继续使用对应版本，新项目再使用 S17，不自动迁移或覆盖旧工件。
 
-本地视频文件直接进入分析，链接先下载后分析。例如：
+## 回退到 S13
 
-```text
-使用 $long-video-subtitles，给这个 YouTube / B 站视频制作简体中文字幕：<视频链接>
-按首次配置的下载方式取得视频，再进行音画分析、翻译和审校。
+更新前 GitHub 上的 **S13 原版**已完整保留，提交为 `cde22e07a0302afb5342de297a948b3a9dffc9ee`。`archive/s13` 分支指向同一提交；下面的快照链接固定到提交，不受后续 main 更新影响。
+
+- [S13 旧版介绍页](https://beginsc.github.io/long-video-subtitles/s13/)
+- [S13 完整源码快照](https://github.com/beginsc/long-video-subtitles/tree/cde22e07a0302afb5342de297a948b3a9dffc9ee) / [下载 S13 ZIP](https://github.com/beginsc/long-video-subtitles/archive/cde22e07a0302afb5342de297a948b3a9dffc9ee.zip)
+- [S13 README 与原版配置说明](https://github.com/beginsc/long-video-subtitles/blob/cde22e07a0302afb5342de297a948b3a9dffc9ee/README.md)
+
+可在新的空目录获取旧版，然后将该目录安装到宿主技能位置：
+
+```bash
+git clone --branch archive/s13 --single-branch https://github.com/beginsc/long-video-subtitles.git long-video-subtitles-S13
+git -C long-video-subtitles-S13 rev-parse HEAD
 ```
 
-## 依赖与后端
+最后一条输出应为上述 S13 提交。替换当前安装前保留它及进行中的项目；使用 S13 自己的配置说明。该回退入口保留历史行为，不表示 S13 获得了 S17 的修正。
 
-| 使用场景 | 需要准备 |
-| --- | --- |
-| 已有 SRT 的翻译 / 校对 | 默认使用岗位子代理与 Python；无音频时保留时间轴 |
-| 视频链接下载 | 本地 yt-dlp 或远程 SnapAny API，见[首次配置](references/media-intake.md) |
-| 视频抽帧、音频处理 | FFmpeg / ffprobe；有图像输入能力的会话 |
-| 本机 WhisperX | 独立部署的运行环境、模型和兼容运行器，见[说明](references/whisperx-local.md) |
-| AssemblyAI | 自行配置 API 凭据与实际任务授权，见[说明](references/assemblyai.md) |
-| WhisperX 服务器 | 自有兼容服务、SSH 与 API 凭据，见[说明](references/whisperx.md) |
-| DeepSeek 润色（可选） | 默认关闭；核对提示词、模型可用性、项目授权与数据去向，见[说明](references/deepseek-polish.md) |
-| DoveBench 评测（可选） | 另行部署数据缓存和评测环境，见[说明](references/dovebench-local.md) |
+## 验证与已知限制
 
-公开包中的服务器、密钥路径和本机运行目录均为占位示例。克隆仓库不会自动安装 ASR 环境或下载模型；`whisperx_local.py` 当前只对接约定布局的 Windows 独立运行环境。云端服务的费用与访问条件以服务商实际要求为准。
+S17 r4.3 维护时通过 31 项脚本测试，以及六条跨领域素材的独立小样审校。它们验证工具和特定行为，不能证明整体翻译质量已提升。技术检查不等于意思正确，静态渲染不等于动态观看；实际听看范围和未决问题随交付说明。
 
-## 仓库结构
-
-```text
-SKILL.md               技能入口与验收要求
-agents/openai.yaml      技能显示信息
-scripts/                Python 工具与现有单元测试
-references/             分阶段工作规范与后端说明
-assets/                 配置模板、语体配置、领域词库
-docs/                   GitHub Pages 静态介绍页
-```
-
-本地运行现有测试（不会启动完整翻译任务）：
+[DoveBench 本地结果与问题复盘](docs/benchmarks.md)公开 S09、S17 r4.2＋WhisperX、S17 r4.2＋MAI 的七项已完成指标。SC2/29_30 的 SubER 分别为 **60.807 / 64.708 / 67.362**，越低越好。本次 MAI 分数较差，合理异译与参考错误也会影响评分。**r4.3 尚未重新运行整片基准**，不能把 r4.2 的分数标为 r4.3 成绩。
 
 ```bash
 python -B -m unittest discover -s scripts -p "test_*.py"
 ```
 
-## 质量边界
+## 设计来源与许可证
 
-技术检查不能证明翻译含义正确。只有实际读取图像或音频，才可以记为完成对应核验；未解决的问题应保持 `UNCLEAR` / `needs_review`。同一模型的多个子代理属于独立实例分工，不等同于人工审校或独立模型评审。子代理不可用时须记录真实执行方式；用户明确要求独立子代理审校时，不能静默降级。公开包不包含私人素材、模型权重、凭据或维护者的历史授权。
+字幕制作流程参考 ViDove、VideoLingo 等项目；[历史来源记录](https://github.com/beginsc/long-video-subtitles/blob/cde22e07a0302afb5342de297a948b3a9dffc9ee/references/project-sources.md)保留固定提交和当时的设计说明。S17 的专家协作设计还参考了用户提供的 `video-translation-summarization` 项目；本仓库不捆绑该项目、第三方模型或基准数据。SC2 起始词库保留每条记录的来源与适用范围。
 
-流程参考 ViDove、VideoLingo 等项目，设计映射与来源见 [project-sources.md](references/project-sources.md)。仓库公开不改变第三方工具、模型和数据各自的许可证；本仓库暂未指定开源许可证。
+本项目采用 **[MIT 开源协议](LICENSE)**，版权署名为 `2026 beginsc and contributors`。第三方工具、模型、视频和评测数据仍适用各自的许可证。MIT 标准文本见 [Open Source Initiative](https://opensource.org/license/mit)。

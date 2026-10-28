@@ -18,8 +18,6 @@ projects/
 *.mp3
 .DS_Store
 Thumbs.db
-
-# Private download responses, signed URLs and login cookie jars
 *.private.json
 *.private.jsonl
 *.private.txt

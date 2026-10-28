@@ -1,7 +1,7 @@
 """Acquire one media item; user preferences live outside the installed skill.
 
 Python 3.9+, standard library. ffprobe validates every media input. URL input
-uses either yt-dlp or SnapAny's documented public API, never an implicit fallback.
+uses yt-dlp, SnapAny's public API, or a user-registered command adapter.
 """
 import argparse
 import hashlib
@@ -22,6 +22,7 @@ from urllib.request import Request, HTTPRedirectHandler, build_opener, urlopen
 
 SNAPANY_ENDPOINT = 'https://api.snapany.com/openapi/v1/extract/post'
 KEY_ENV = 'SNAPANY_API_KEY'
+BUILTINS = ('local', 'remote')
 
 
 class IntakeError(ValueError):
@@ -81,13 +82,50 @@ def positive(value):
     return number
 
 
+def backend_name(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', value) or value == 'file':
+        raise IntakeError('Backend ID must start with a lowercase letter and use letters, digits, _ or -; file is reserved.')
+    return value
+
+
+def validate_adapter(value):
+    if not isinstance(value, dict) or value.get('schema_version') != 1:
+        raise IntakeError('Custom adapter must have schema_version=1.')
+    command = value.get('command')
+    if not isinstance(command, list) or not command or any(not isinstance(v, str) or not v for v in command):
+        raise IntakeError('Custom adapter command must be a nonempty argument array, not a shell command string.')
+    joined = '\n'.join(command)
+    for placeholder in ('{url}', '{output_dir}', '{result_json}'):
+        if placeholder not in joined:
+            raise IntakeError(f'Custom adapter command must include {placeholder}.')
+    unknown = set(re.findall(r'\{([a-z_]+)\}', joined)) - {'url', 'output_dir', 'result_json', 'max_height', 'python'}
+    if unknown:
+        raise IntakeError('Unknown custom adapter placeholder.')
+    required = value.get('required_env', [])
+    if not isinstance(required, list) or any(not isinstance(n, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', n) for n in required):
+        raise IntakeError('required_env must list environment variable names, not secret values.')
+    positive(value.get('timeout_seconds', 3600))
+    return value
+
+
 def read_config(path):
     if not path.exists():
         return None
     value = load(path)
-    if (not isinstance(value, dict) or value.get('schema_version') != 1
-            or value.get('backend') not in ('local', 'remote')):
-        raise IntakeError('Invalid download config; run configure to choose local or remote.')
+    if not isinstance(value, dict) or value.get('schema_version') != 1:
+        raise IntakeError('Invalid download config; run configure to select a built-in or custom backend.')
+    selected = backend_name(value.get('backend'))
+    custom = value.get('custom_backends', {})
+    if not isinstance(custom, dict):
+        raise IntakeError('custom_backends must be an object keyed by backend ID.')
+    for name, definition in custom.items():
+        if backend_name(name) in BUILTINS:
+            raise IntakeError('Custom backend cannot replace a built-in ID.')
+        validate_adapter(definition)
+    if selected not in BUILTINS and selected not in custom:
+        raise IntakeError('Selected custom backend is not registered; use configure --adapter.')
+    if value.get('http_client', 'urllib') not in ('urllib', 'curl'):
+        raise IntakeError('http_client must be urllib or curl.')
     positive(value.get('max_height', 1080))
     return value
 
@@ -96,14 +134,18 @@ def configure(args):
     backend = args.backend
     if not backend:
         if not sys.stdin.isatty():
-            raise IntakeError('Choose --backend local (yt-dlp) or remote (SnapAny). No default selected.')
+            raise IntakeError('Choose --backend local, remote, or a custom ID with --adapter. No default selected.')
         print('视频链接下载方式 / Video URL downloader:')
         print('1. 本地 local: yt-dlp 在本机运行；需安装 yt-dlp、FFmpeg。')
         print('2. 远程 remote: 视频链接发送到 SnapAny 解析；需 API key，可能计费；视频仍下载到本机。')
-        answer = input('选择 / Choose [1/2]: ').strip().lower()
-        backend = {'1': 'local', 'local': 'local', '2': 'remote', 'remote': 'remote'}.get(answer)
-        if not backend:
-            raise IntakeError('No selection saved. Run configure again.')
+        print('3. 自定义 custom: 注册自己的第三方下载器，或选择已注册的后端 ID。')
+        answer = input('选择 / Choose [1/2/3 or registered ID]: ').strip().lower()
+        backend = {'1': 'local', '2': 'remote'}.get(answer, answer)
+        if answer in ('3', 'custom'):
+            backend = input('自定义后端 ID / Custom backend ID: ').strip()
+            if not args.adapter:
+                args.adapter = input('适配定义 JSON 路径 / Adapter JSON path (blank if registered): ').strip() or None
+    backend_name(backend)
     path = config_path(args.config)
     # Preserve preferences when changing backend unless a new height was supplied.
     try:
@@ -111,11 +153,20 @@ def configure(args):
     except (ValueError, TypeError):
         # An explicit new choice also repairs a malformed old preference file.
         old = {}
-    value = {'schema_version': 1, 'backend': backend,
+    custom = dict(old.get('custom_backends', {}))
+    if args.adapter:
+        if backend in BUILTINS:
+            raise IntakeError('--adapter requires a custom backend ID, not local or remote.')
+        custom[backend] = validate_adapter(load(Path(args.adapter).expanduser()))
+    if backend not in BUILTINS and backend not in custom:
+        raise IntakeError('Register this third-party backend with --adapter <definition.json>.')
+    value = {**old, 'schema_version': 1, 'backend': backend,
              'max_height': positive(args.max_height or old.get('max_height', 1080)),
+             'custom_backends': custom, 'http_client': args.http_client or old.get('http_client', 'urllib'),
              'configured_at': now()}
     save(path, value, replace=True)
-    return {'status': 'configured', 'config_path': str(path), **value,
+    return {'status': 'configured', 'config_path': str(path), 'backend': backend,
+            'custom_backends': list(custom), 'max_height': value['max_height'], 'http_client': value['http_client'],
             'next': 'Run check. This command does not install dependencies or contact providers.'}
 
 
@@ -246,7 +297,50 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def extract_snapany(url, out, cached=None):
+def curl_transfer(url, destination, headers, data=None, byte_range=None):
+    """Use curl's verified TLS stack. Secrets enter via stdin, never argv/logs."""
+    if destination.exists():
+        raise IntakeError('curl destination already exists.')
+    def quote(value):
+        if any(c in value for c in ('\r', '\n', '\x00')):
+            raise IntakeError('Invalid curl configuration value.')
+        return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    options = ['url = ' + quote(validate_url(url))]
+    options += ['header = ' + quote(name + ': ' + value if value else name + ';')
+                for name, value in media_headers(headers).items()]
+    if data is not None:
+        options += ['request = "POST"', 'data-binary = ' + quote(data)]
+    command = [binary('curl'), '--config', '-', '--silent', '--show-error', '--fail-with-body',
+               '--retry', '0', '--connect-timeout', '30', '--output', str(destination),
+               '--write-out', '%{http_code}\n%{content_type}']
+    if data is not None:
+        # No redirects for credentialed API calls.
+        command += ['--proto', '=https', '--max-time', '90', '--max-filesize', str(8 * 1024 * 1024)]
+    else:
+        command += ['--location', '--proto', '=http,https', '--proto-redir', '=http,https',
+                    '--speed-time', '60', '--speed-limit', '1', '--max-time', '900']
+    header_path = None
+    if byte_range is not None:
+        header_path = destination.with_name(destination.name + '.headers.private.txt')
+        command += ['--range', f'{byte_range[0]}-{byte_range[1]}', '--dump-header', str(header_path)]
+    result = subprocess.run(command, input='\n'.join(options) + '\n', capture_output=True,
+                            text=True, encoding='utf-8', errors='replace', check=False)
+    status = result.stdout.splitlines()[0] if result.stdout else '000'
+    kind = result.stdout.splitlines()[1] if len(result.stdout.splitlines()) > 1 else ''
+    if result.returncode or status not in (('200', '206') if byte_range else ('200',)):
+        raise IntakeError(f'curl transfer failed (exit {result.returncode}, HTTP {status}); no automatic API retry. TLS verification remains enabled.')
+    response_headers = {}
+    if header_path is not None:
+        for line in header_path.read_text(encoding='utf-8', errors='replace').splitlines():
+            if line.startswith('HTTP/'):
+                response_headers = {}
+            elif ':' in line:
+                key, value = line.split(':', 1)
+                response_headers[key.strip().lower()] = value.strip()
+    return {'content_type': kind, 'status': int(status), 'headers': response_headers}
+
+
+def extract_snapany(url, out, cached=None, http_client='urllib'):
     url_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()
     if cached:
         wrapper = load(cached)
@@ -264,8 +358,13 @@ def extract_snapany(url, out, cached=None):
     request = Request(SNAPANY_ENDPOINT, data=json.dumps({'url': url}).encode('utf-8'),
                       headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'}, method='POST')
     try:
-        with build_opener(NoRedirect()).open(request, timeout=90) as response:
-            body = response.read(8 * 1024 * 1024 + 1)
+        if http_client == 'curl':
+            raw = out / 'snapany-body.private.json'
+            curl_transfer(SNAPANY_ENDPOINT, raw, dict(request.header_items()), request.data.decode('utf-8'))
+            body = raw.read_bytes()
+        else:
+            with build_opener(NoRedirect()).open(request, timeout=90) as response:
+                body = response.read(8 * 1024 * 1024 + 1)
         if len(body) > 8 * 1024 * 1024:
             raise IntakeError('SnapAny response exceeded 8 MiB; request may have been billed. Do not auto-resubmit.')
         data = json.loads(body)
@@ -313,18 +412,72 @@ def select_snapany(data, height, media_index=None):
         return {'video_url': validate_url(variant['video_url']),
                 'audio_url': validate_url(variant['audio_url']) if variant.get('audio_url') else None,
                 'headers': media_headers(media.get('headers'), variant.get('headers')),
-                'quality': variant['quality'], 'media_index': index}
+                'quality': variant['quality'], 'media_index': index,
+                'video_size': variant.get('video_filesize'), 'audio_size': variant.get('audio_filesize')}
     if media.get('variants'):
         raise IntakeError('No video variant at/below max-height; choose a larger limit after inspecting the cached response.')
     if not media.get('resource_url'):
         raise IntakeError('SnapAny video has no downloadable URL.')
     return {'video_url': validate_url(media['resource_url']), 'audio_url': None,
-            'headers': media_headers(media.get('headers')), 'quality': None, 'media_index': index}
+            'headers': media_headers(media.get('headers')), 'quality': None, 'media_index': index,
+            'video_size': None, 'audio_size': None}
 
 
-def download_http(url, destination, headers):
+def download_ranges(url, destination, headers, expected_size, http_client, chunk_size=4 * 1024 * 1024):
+    """Validate each interval before appending; never concatenate a full HTTP 200 twice."""
+    partial = destination.with_name(destination.name + '.part')
+    offset = 0
+    receipts = []
+    with partial.open('xb') as target:
+        while offset < expected_size:
+            end = min(offset + chunk_size, expected_size) - 1
+            chunk = destination.with_name(destination.name + f'.chunk-{offset:012d}.part')
+            if http_client == 'curl':
+                meta = curl_transfer(url, chunk, headers, byte_range=(offset, end))
+            else:
+                request = Request(validate_url(url), headers={**headers, 'Range': f'bytes={offset}-{end}'})
+                try:
+                    with urlopen(request, timeout=60) as response, chunk.open('xb') as stream:
+                        meta = {'status': response.status, 'content_type': response.headers.get('Content-Type', ''),
+                                'headers': {k.lower(): v for k, v in response.headers.items()}}
+                        for block in iter(lambda: response.read(1024 * 1024), b''):
+                            stream.write(block)
+                except (URLError, TimeoutError):
+                    raise IntakeError('Range download failed; partial file retained. No API retry.') from None
+            size = chunk.stat().st_size
+            if meta['status'] == 206:
+                match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', meta['headers'].get('content-range', ''))
+                if not match or tuple(map(int, match.groups())) != (offset, end, expected_size) or size != end - offset + 1:
+                    raise IntakeError('Range response does not match requested offset, length or total; partial data retained.')
+            elif meta['status'] != 200 or offset != 0 or size != expected_size:
+                raise IntakeError('Server ignored Range or returned incomplete data; refusing to append.')
+            if any(x in meta['content_type'].lower() for x in ('text/html', 'application/json', 'mpegurl', 'dash+xml')):
+                raise IntakeError('Range response is not a direct media file.')
+            with chunk.open('rb') as stream:
+                shutil.copyfileobj(stream, target, length=1024 * 1024)
+            receipts.append({'start': offset, 'end': offset + size - 1, 'status': meta['status'], 'bytes': size})
+            offset += size
+            chunk.unlink()
+    if partial.stat().st_size != expected_size or destination.exists():
+        raise IntakeError('Downloaded size mismatch or destination exists.')
+    partial.rename(destination)
+    save(destination.with_name(destination.name + '.transfer.json'), {'expected_bytes': expected_size,
+         'actual_bytes': offset, 'chunk_size': chunk_size, 'ranges': receipts, 'http_client': http_client})
+
+
+def download_http(url, destination, headers, http_client='urllib', expected_size=None):
     """Stream a direct file. Failed/partial data is never treated as complete."""
     partial = destination.with_name(destination.name + '.part')
+    if isinstance(expected_size, int) and not isinstance(expected_size, bool) and expected_size > 0:
+        return download_ranges(url, destination, headers, expected_size, http_client)
+    if http_client == 'curl':
+        kind = curl_transfer(url, partial, headers)['content_type'].lower()
+        if any(x in kind for x in ('text/html', 'application/json', 'mpegurl', 'dash+xml')):
+            raise IntakeError('Response is not a direct media file (HTML/JSON/HLS/DASH).')
+        if not partial.is_file() or partial.stat().st_size == 0 or destination.exists():
+            raise IntakeError('Empty download or existing destination; no ready manifest.')
+        partial.rename(destination)
+        return
     try:
         with urlopen(Request(validate_url(url), headers=headers), timeout=60) as response:
             if response.status != 200:
@@ -349,14 +502,14 @@ def download_http(url, destination, headers):
         raise IntakeError('Media download failed; partial file retained. No API retry.') from None
 
 
-def snap_download(url, out, height, ffmpeg, ffprobe, media_index=None, cached=None):
-    data, origin = extract_snapany(url, out, cached)
+def snap_download(url, out, height, ffmpeg, ffprobe, media_index=None, cached=None, http_client='urllib'):
+    data, origin = extract_snapany(url, out, cached, http_client)
     choice = select_snapany(data, height, media_index)
     video = out / 'video.download'
-    download_http(choice['video_url'], video, choice['headers'])
+    download_http(choice['video_url'], video, choice['headers'], http_client, choice['video_size'])
     if choice['audio_url']:
         audio = out / 'audio.download'
-        download_http(choice['audio_url'], audio, choice['headers'])
+        download_http(choice['audio_url'], audio, choice['headers'], http_client, choice['audio_size'])
         path = out / 'media.mkv'
         run([ffmpeg, '-v', 'error', '-nostdin', '-n', '-i', str(video), '-i', str(audio),
              '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', str(path)], 'FFmpeg stream merge')
@@ -369,8 +522,40 @@ def snap_download(url, out, height, ffmpeg, ffprobe, media_index=None, cached=No
              '-map', '0:a?', '-c', 'copy', str(path)], 'FFmpeg remux')
     return path, {'provider': 'snapany', 'endpoint': SNAPANY_ENDPOINT, 'response_origin': origin,
                   'title': data.get('title'), 'video_id': data.get('id'),
-                  'media_index': choice['media_index'], 'selected_height': choice['quality'],
+                  'media_index': choice['media_index'], 'selected_height': choice['quality'], 'http_client': http_client,
                   'subtitles_downloaded': False, 'automatic_api_retries': 0}
+
+
+def custom_download(url, out, height, name, definition):
+    validate_adapter(definition)
+    missing = [key for key in definition.get('required_env', []) if not os.environ.get(key)]
+    if missing:
+        raise IntakeError('Missing custom adapter environment variables: ' + ', '.join(missing))
+    receipt = out / 'adapter-result.json'
+    values = {'url': url, 'output_dir': str(out), 'result_json': str(receipt),
+              'max_height': str(height), 'python': sys.executable}
+    command = []
+    for template in definition['command']:
+        for key, value in values.items():
+            template = template.replace('{' + key + '}', value)
+        command.append(template)
+    command[0] = binary(command[0])
+    save(out / 'adapter-definition.json', definition)
+    run(command, 'Custom downloader ' + name, positive(definition.get('timeout_seconds', 3600)))
+    result = load(receipt)
+    if not isinstance(result, dict) or result.get('schema_version') != 1 or result.get('status') != 'completed':
+        raise IntakeError('Custom downloader did not return a completed schema_version=1 receipt.')
+    if result.get('source_url_sha256') != hashlib.sha256(url.encode('utf-8')).hexdigest():
+        raise IntakeError('Custom downloader receipt is not bound to this source URL.')
+    supplied = result.get('media_path')
+    if not isinstance(supplied, str) or not supplied:
+        raise IntakeError('Custom downloader receipt requires media_path.')
+    media = Path(supplied)
+    media = (media if media.is_absolute() else out / media).resolve()
+    if not media.is_relative_to(out.resolve()) or not media.is_file() or media.suffix == '.part':
+        raise IntakeError('Custom media must be a completed file inside this attempt directory.')
+    return media, {'provider': name, 'adapter_type': 'command', 'adapter_definition_sha256': sha256(out / 'adapter-definition.json'),
+                   'adapter_receipt_sha256': sha256(receipt), 'title': result.get('title'), 'video_id': result.get('video_id')}
 
 
 def acquire(args):
@@ -379,30 +564,39 @@ def acquire(args):
     config = (read_config(config_path(args.config)) or {}) if kind == 'url' else {}
     backend = (args.backend or config.get('backend')) if kind == 'url' else 'file'
     if kind == 'url' and not backend:
-        raise IntakeError('Download preference missing. Run configure and choose local or remote before URL processing.')
+        raise IntakeError('Download preference missing. Run configure and choose a built-in or custom backend before URL processing.')
     height = positive(args.max_height or config.get('max_height', 1080))
     if kind == 'file' and (args.media_index or args.snapany_response or args.cookies_file or args.js_runtime):
         raise IntakeError('Downloader options do not apply to local files.')
     if backend != 'remote' and (args.snapany_response or args.media_index):
         raise IntakeError('SnapAny options require --backend remote.')
-    if backend == 'remote' and (args.cookies_file or args.js_runtime or args.yt_dlp):
+    if backend != 'local' and (args.cookies_file or args.js_runtime or args.yt_dlp):
         raise IntakeError('yt-dlp options require --backend local; cookies are not sent to SnapAny.')
+    custom = config.get('custom_backends', {}).get(backend)
+    if backend not in (*BUILTINS, 'file') and custom is None:
+        raise IntakeError('Unknown backend; register it with configure --backend <id> --adapter <definition.json>.')
+    http_client = args.http_client or config.get('http_client', 'urllib')
+    if backend == 'remote' and http_client == 'curl':
+        binary('curl')
     fp = binary(args.ffprobe)
-    ff = binary(args.ffmpeg) if kind == 'url' else None
+    ff = binary(args.ffmpeg) if backend in BUILTINS else None
     command = ytdlp_command(args.yt_dlp) if backend == 'local' else None
     if backend == 'remote' and not args.snapany_response and not os.environ.get(KEY_ENV, '').strip():
         raise IntakeError(f'Missing {KEY_ENV}. Configure the environment locally before downloading.')
     out = Path(args.output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=False)
     save(out / 'request.json', {'schema_version': 1, 'started_at': now(), 'input_kind': kind,
-         'source': source, 'backend': backend, 'max_height': height, 'allow_silent': args.allow_silent})
+         'source': source, 'backend': backend, 'max_height': height, 'allow_silent': args.allow_silent,
+         'http_client': http_client if backend == 'remote' else None})
     try:
         if backend == 'file':
             media, acquisition = Path(source), {'provider': 'file', 'original_read_only': True}
         elif backend == 'local':
             media, acquisition = yt_download(source, out, height, command, ff, args.cookies_file, args.js_runtime)
+        elif backend == 'remote':
+            media, acquisition = snap_download(source, out, height, ff, fp, args.media_index, args.snapany_response, http_client)
         else:
-            media, acquisition = snap_download(source, out, height, ff, fp, args.media_index, args.snapany_response)
+            media, acquisition = custom_download(source, out, height, backend, custom)
         info = probe(media, fp)
         validate_media(info, require_video=(kind == 'url'), allow_silent=args.allow_silent)
         warnings = []
@@ -450,7 +644,9 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='action', required=True)
     c = sub.add_parser('configure', help='Choose and save the download backend (no network).')
-    c.add_argument('--backend', choices=('local', 'remote'))
+    c.add_argument('--backend', type=backend_name, help='local, remote, or a registered third-party ID.')
+    c.add_argument('--adapter', help='Register a third-party command adapter from a JSON definition.')
+    c.add_argument('--http-client', choices=('urllib', 'curl'), help='SnapAny HTTP transport; TLS verification stays enabled.')
     c.add_argument('--config')
     c.add_argument('--max-height', type=positive)
     c.set_defaults(func=configure)
@@ -464,7 +660,8 @@ def parser():
     c.add_argument('--input', required=True)
     c.add_argument('--output-dir', required=True)
     c.add_argument('--config')
-    c.add_argument('--backend', choices=('local', 'remote'), help='One-task override; does not change saved preference.')
+    c.add_argument('--backend', type=backend_name, help='Built-in/custom ID; one-task override does not change saved preference.')
+    c.add_argument('--http-client', choices=('urllib', 'curl'), help='One-task SnapAny HTTP transport override.')
     c.add_argument('--max-height', type=positive)
     c.add_argument('--media-index', type=int)
     c.add_argument('--snapany-response', help='Reuse a source-bound response.private.json in a NEW attempt.')
