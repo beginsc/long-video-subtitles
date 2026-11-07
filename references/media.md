@@ -38,6 +38,21 @@ ASR 输出目录保留原始响应、canonical.json、source.json 及收据。so
 
 长音频按已选后端实际限制切块，优先停顿，保留块起点和少量边界重叠。费用未知的旧请求先查状态；已具备 provider receipt 时可用 `recover --output-dir PATH` 离线重建规范化输出。recover 不是重新识别命令。
 
+## MAI 的本片术语提示
+
+使用 MAI 时，源稿专家在首次请求前，从用户材料、片名/人物条与已加载领域库筛出本片相关的源语言专名、单位名和技能名，保存为项目级 UTF-8 `asr-phrases.json`：`{"phrases":["Widow mine","Chrono Boost","PartinG"]}`。示例只适用于相应领域；没有相关词可用空数组。不要整库灌入、中英译文拼接、加入参考答案或把 ASR 猜词收为已确认词。源语言拼写与中文译名是两个用途，翻译词库不会自动传给 ASR。
+
+```text
+PYTHON SKILL/scripts/asr_workflow.py transcribe --backend remote --file JOB/audio.wav --output-dir JOB/asr-plan --language en --phrases-file JOB/asr-phrases.json --prepare-only
+PYTHON SKILL/scripts/asr_workflow.py transcribe --backend remote --file JOB/audio.wav --output-dir JOB/asr-attempt-01 --language en --phrases-file JOB/asr-phrases.json
+```
+
+第一条仅在本机检查音频并保存请求、词表来源哈希和 `mai-definition.json`，无需密钥，不调用服务。第二条才实际转写，沿用本次已选配置和已有授权；两条必须使用不同的新目录。按项目替换语言、配置和真实块偏移。`--phrases-file` 仅作用于本次 MAI 请求，不修改全局配置；不支持的后端会明确报错。词表只接受字符串数组或仅含 `phrases` 的对象，清理空格和重复项，拒绝空词及控制字符。
+
+保存的实际请求应含顶层 `phraseList.phrases`（空词表则省略），`enhancedMode.modelOptions` 仍为 `verbatim` 与 `word`。词表是识别提示，不是原声证据；有意错读、口音笑话或近音普通词不能靠热词全局替换。第一次结果后才确认的新词留给下一任务或有理由的局部复核，不自动重跑整片。比较时冻结词表来源与各臂配置，单独测试提示词的效果。
+
+参数依据：[Microsoft Learn 的 MAI-Transcribe 文档](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe#use-a-mai-transcribe-model)。预检和离线测试不证明云端识别效果；本候选不同时改变 `clean/verbatim` 或加入 VAD。
+
 ## 按需音画证据与样图
 
 用现有 FFmpeg/ffprobe，不需要另建“视觉系统”。以下只是命令形状，路径和时刻换为实际值：
@@ -49,6 +64,8 @@ ffmpeg -n -ss 118 -i media.mp4 -t 6 -map 0:v:0 -map 0:a:0? -c:v libx264 -c:a aac
 ```
 
 抽取后用实际图像/音频/视频查看工具审阅。没有播放/听辨能力就说明限制，不能用生成了文件替代观察。图片只证明当时画面，短片才支持动作顺序判断。
+
+优先处理会改变成品的数字/日期冲突、领域词变成不通顺普通词、否定/态度歧义和短句有无分歧。沿用一个 issues 条目：附带原片前后语境的音频/视频路径、绝对起止与待确认的问题；片段生成时仍为待审。听辨者先听原声形成判断，再看候选读法，记录听到的内容与听不清的部分。仅有第二个 ASR 的一致结果、词时间或参考字幕，不能把该条改为已听辨解决。因发音梗产生的疑点保留原声，不先清洗成规范术语。源文实质修正后只交另一位语言专家复核相应完整语义组。
 
 渲染从实际交付字幕出发，使用 FFmpeg subtitles/ass 滤镜或可控播放器。Windows 建议在项目目录使用简单相对文件名，避免盘符冒号的滤镜转义问题；命令以参数数组或正确引用传入。示例：
 

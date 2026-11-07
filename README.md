@@ -1,6 +1,6 @@
 # 长视频字幕组 · Long Video Subtitles
 
-**当前版本：S17 Team r4.3 · 测试版 · 2026-10-29。** S17 正在验证流程和字幕质量，尚未作为稳定版发布。
+**当前版本：S17 Team r4.12 · 测试版 · 2026-11-07。** 基于 2026-11-02 冻结候选发布，尚非稳定版。允许经独立审校压缩无信息填充，保留问答、笑点、限定信息及原始词流。
 
 [公开介绍页](https://beginsc.github.io/long-video-subtitles/) · [版本更新历史](CHANGELOG.md) · [回退到 S13](#回退到-s13) · [MIT 许可证](LICENSE)
 
@@ -18,6 +18,15 @@
 
 [技能入口](SKILL.md) · [岗位分工](references/team.md) · [语言与本地化](references/language.md) · [持久领域词库](references/terminology.md) · [时间轴与质检](references/production.md) · [文件和工具](references/files.md)
 
+## r4.12 的变化
+
+- MAI 和 WhisperX 共用词流与显示后处理，保留真实时间、覆盖映射和保守残句约束。
+- 保留三岗位及独立保真审校；人物近名逐处核对，不全局替换，未知部分不抹掉同句已知信息。
+- 简中单语每条单行；1080p ASS 使用思源黑体、默认 64 号，并检查实际渲染宽度。润色保留事实和语气，文化类比不机械替换真实机构或平台。
+- 整条无信息填充的显示省略必须有独立批准，并绑定原词、时间、邻文和证据；普通空译文不能通过。问题、回答、笑点、否定及限定不得为减少短闪而删除。
+
+旧项目继续使用原版本；本版不自动迁移稿件或重置已保存的 ASR 偏好。使用新项目试用，导出显式指定 draft/final；safe_partial 只供草稿。见[统一词流与源句约束](references/unified-workflow.md)、[人物证据](references/entity-evidence.md)及[r4.12 验证记录](docs/r4.12-validation.md)。
+
 ## 安装测试版
 
 需要能读取 Skill、执行 Python 并调度真实子 agent 的环境。脚本使用 Python 标准库，在 Python 3.12 环境验证；处理媒体另需 FFmpeg/ffprobe，下载器、ASR、模型和服务凭据按所选方式准备。
@@ -26,7 +35,7 @@
 
 ```text
 使用 $skill-installer 安装 https://github.com/beginsc/long-video-subtitles 根目录中的技能。
-这是 S17 r4.3 测试版。已有同名技能时先保留旧版，再按当前宿主的技能目录安装。
+这是 S17 r4.12 测试版。已有同名技能时先保留旧版，再按当前宿主的技能目录安装。
 沿用我已有的视频下载和 ASR 偏好，缺少配置时再分别选择。
 ```
 
@@ -85,9 +94,11 @@ git -C long-video-subtitles-S13 rev-parse HEAD
 
 ## 验证与已知限制
 
-S17 r4.3 维护时通过 31 项脚本测试，以及六条跨领域素材的独立小样审校。它们验证工具和特定行为，不能证明整体翻译质量已提升。技术检查不等于意思正确，静态渲染不等于动态观看；实际听看范围和未决问题随交付说明。
+r4.12 通过 **132 项脚本测试**。固定 MAI 输入 iiiLab_33 的局部精简使阅读速度警告从 6 条降至 5 条，短闪仍为 9 条；新片段 iiiLab_34 前 3 分钟的两版 ASS/SRT 完全相同，短闪均为 3 条。两个真实样本都未批准整条省略；这一功能目前只有合成测试正例。不能据此宣称短闪改善或整体自然度提升。
 
-[DoveBench 本地结果与问题复盘](docs/benchmarks.md)公开 S09、S17 r4.2＋WhisperX、S17 r4.2＋MAI 的七项已完成指标。SC2/29_30 的 SubER 分别为 **60.807 / 64.708 / 67.362**，越低越好。本次 MAI 分数较差，合理异译与参考错误也会影响评分。**r4.3 尚未重新运行整片基准**，不能把 r4.2 的分数标为 r4.3 成绩。
+保留独立语言审校、全条静态栅格宽度检查及部分静图审看；没有全片听辨或动态视频验收，新片保留两处源句疑点，字幕仍为草稿。[验证方法与限制](docs/r4.12-validation.md)列出范围及未验证项目。
+
+[DoveBench 历史结果与问题复盘](docs/benchmarks.md)仍属于 S09、S17 r4.2＋WhisperX、S17 r4.2＋MAI；SC2/29_30 的 SubER 分别为 **60.807 / 64.708 / 67.362**。**r4.12 本轮未重跑七项参考指标或 DoveBench-ALE**，不能将旧分数归给新版，也不为了贴近参考改稿。
 
 ```bash
 python -B -m unittest discover -s scripts -p "test_*.py"

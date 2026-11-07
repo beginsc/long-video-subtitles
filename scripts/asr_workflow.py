@@ -5,6 +5,7 @@ processes one timestamped audio block, preserves raw evidence and never retries 
 """
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+import unicodedata
 from urllib.parse import urlsplit
 
 import media_intake as io
@@ -366,12 +368,47 @@ def mai_canonical(raw):
     return {'segments': segments, 'language': None}
 
 
+def validate_phrases(values):
+    """A selected source-language list, never a whole bilingual glossary/prompt."""
+    if not isinstance(values, list):
+        raise io.IntakeError('MAI phrases must be a JSON list of nonempty strings.')
+    phrases, seen = [], set()
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise io.IntakeError('Each MAI phrase must be a nonempty string.')
+        if any(unicodedata.category(c) == 'Cc' for c in value):
+            raise io.IntakeError('MAI phrases must be single-line terms without control characters.')
+        phrase = ' '.join(value.split())
+        identity = phrase.casefold()
+        if identity not in seen:
+            seen.add(identity)
+            phrases.append(phrase)
+    return phrases
+
+
+def load_phrases(value):
+    path = Path(value).expanduser().resolve(strict=True)
+    raw = path.read_bytes()
+    try:
+        data = json.loads(raw.decode('utf-8-sig'))
+    except (UnicodeError, ValueError):
+        raise io.IntakeError('phrases-file must be valid UTF-8 JSON.') from None
+    if isinstance(data, dict):
+        if set(data) != {'phrases'}:
+            raise io.IntakeError('Use {"phrases": [...]} or a string list; select source terms from the glossary first.')
+        data = data['phrases']
+    return validate_phrases(data), {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+
 def mai_definition(request):
     # Model options placement follows the model's official REST request example.
     result = {'enhancedMode': {'enabled': True, 'model': MODEL,
               'modelOptions': {'timestamps': 'word', 'transcribeStyle': 'verbatim'}}}
     if request.get('language'):
         result['locales'] = [request['language']]
+    phrases = validate_phrases(request.get('phrases', []))
+    if phrases:
+        result['phraseList'] = {'phrases': phrases}
     return result
 
 
@@ -511,6 +548,11 @@ def materialize(out, request):
 
 def transcribe(args):
     selected, spec = choose(args)
+    prepare_only = getattr(args, 'prepare_only', False)
+    phrases_file = getattr(args, 'phrases_file', None)
+    if (prepare_only or phrases_file is not None) and selected != 'mai-transcribe-2':
+        raise io.IntakeError('--phrases-file and --prepare-only currently require the MAI backend; other backends are unchanged.')
+    phrases, phrase_source = load_phrases(phrases_file) if phrases_file is not None else ([], None)
     if args.offset_ms < 0:
         raise io.IntakeError('offset-ms must be nonnegative.')
     source = Path(args.file).expanduser().resolve(strict=True)
@@ -525,9 +567,10 @@ def transcribe(args):
     if args.offline and (selected != 'whisperx' or spec['driver'] != 'runtime'):
         raise io.IntakeError('Strict offline mode is available only for the compatible local WhisperX runtime.')
     if selected == 'mai-transcribe-2':
-        if not spec['endpoint'] or not os.environ.get(spec['key_env']):
-            raise io.IntakeError('Configure an Azure region (default) or Foundry/Speech endpoint and its matching ' + spec['key_env'] + ' locally; no upload was started.')
-        io.binary('curl')
+        if not prepare_only:
+            if not spec['endpoint'] or not os.environ.get(spec['key_env']):
+                raise io.IntakeError('Configure an Azure region (default) or Foundry/Speech endpoint and its matching ' + spec['key_env'] + ' locally; no upload was started.')
+            io.binary('curl')
     elif selected == 'whisperx':
         local_command(spec)
     else:
@@ -538,9 +581,19 @@ def transcribe(args):
     request = {'schema_version': 1, 'backend': selected, 'spec': spec, 'offset_ms': args.offset_ms,
                'language': args.language, 'offline': args.offline, 'at': io.now(),
                'media': {'path': str(source), 'sha256': io.sha256(source), **info}}
+    if phrase_source is not None:
+        request.update(phrases=phrases, phrase_source=phrase_source)
     if selected == 'whisperx':
         request['tool_side_effects'] = runtime_side_effects(spec)
     io.save(out/'request.json', request)
+    if prepare_only:
+        io.save(out/'mai-definition.json', mai_definition(request))
+        result = {'status': 'prepared_only', 'network_called': False,
+                  'request_sha256': io.sha256(out/'request.json'),
+                  'definition_sha256': io.sha256(out/'mai-definition.json'),
+                  'phrase_count': len(phrases), 'output_dir': str(out)}
+        io.save(out/'prepared.json', result)
+        return result
     try:
         raw, canonical = (transcribe_local(request, out) if selected == 'whisperx' else
                           transcribe_mai(request, out) if selected == 'mai-transcribe-2' else transcribe_custom(request, out))
@@ -594,6 +647,8 @@ def parser():
     c.add_argument('--config'); c.add_argument('--backend', type=name); c.add_argument('--file', required=True)
     c.add_argument('--output-dir', required=True); c.add_argument('--offset-ms', type=int, default=0)
     c.add_argument('--language'); c.add_argument('--offline', action='store_true'); c.add_argument('--ffprobe', default='ffprobe')
+    c.add_argument('--phrases-file', help='MAI only: UTF-8 JSON list or {"phrases": [...]} of selected source-language terms; recorded for this request only')
+    c.add_argument('--prepare-only', action='store_true', help='MAI only: validate audio and save request/definition without credentials, upload, or transcription; use a new output directory for a real run')
     for command, function in [('verify', verify), ('recover', recover)]:
         c = sub.add_parser(command); c.set_defaults(func=function); c.add_argument('--output-dir', required=True)
     return p

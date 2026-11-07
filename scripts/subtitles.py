@@ -5,7 +5,11 @@ import copy
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
+from display_checks import resolve_profile, screen, apply_exceptions, unresolved_issues
+from source_guard import audit as audit_source
+from display_omissions import audit as audit_omissions
 
 
 def load(path):
@@ -43,9 +47,9 @@ def rows(doc):
         previous = a
         for key in ("source", "target"):
             text = item.get(key, "")
-            if not isinstance(text, str) or "\x00" in text or "\r" in text:
+            if not isinstance(text, str) or any(unicodedata.category(c) == "Cc" and c != "\n" for c in text):
                 raise ValueError(f"{sid}: invalid {key} text")
-            if "\n\n" in text:
+            if text and any(not line.strip() for line in text.split("\n")):
                 raise ValueError(f"{sid}: blank lines inside a cue are unsupported")
         if not item.get("source", "").strip():
             raise ValueError(f"{sid}: empty source")
@@ -152,26 +156,31 @@ def check_word_ranges(current, original, failures, warnings):
     return coverage
 
 
-def check(doc, reference=None, mode="rebuild", require_target=True, cps=12.0):
+def check(doc, reference=None, mode=None, require_target=True, cps=None,
+          status="draft", profile=None, exceptions=None, bilingual=False):
     current = rows(doc)
+    mode = mode or doc.get("timing_mode", "rebuild")
+    if mode not in ("fixed", "rebuild") or status not in ("draft", "final"):
+        raise ValueError("Invalid mode or status")
+    if status == "final" and not require_target:
+        raise ValueError("Source-only checks cannot use final status")
+    effective_profile = resolve_profile(doc, profile, cps)
     failures, warnings = [], []
+    omission_blockers = audit_omissions(doc, reference)
+    failures.extend(omission_blockers)
+    omitted = doc.get('omitted_units', []) if not omission_blockers else []
+    coverage_rows = current + omitted
     for item in current:
         sid = item["id"]
         target = item.get("target", "")
-        duration = item["end_ms"] - item["start_ms"]
         if require_target and not target.strip():
             failures.append(f"{sid}: missing translation")
-        if duration < 800 or duration > 7000:
-            warnings.append(f"{sid}: duration {duration} ms")
-        if sum(not char.isspace() for char in target) * 1000 / duration > cps:
-            warnings.append(f"{sid}: target exceeds {cps:g} nonspace characters/second")
-    # Keep genuine simultaneous speech. Report every intersecting pair, including nested cues.
-    active = []
-    for item in current:
-        active = [old for old in active if old["end_ms"] > item["start_ms"]]
-        for old in active:
-            warnings.append(f"overlap: {old['id']} / {item['id']}")
-        active.append(item)
+    risks = screen(current, effective_profile, bilingual) if require_target else []
+    warnings.extend(r["message"] for r in risks)
+    accepted, stale, unhandled = apply_exceptions(risks, doc.get("display_exceptions") if exceptions is None else exceptions)
+    if stale:
+        warnings.append("Ignored stale/unmatched display exceptions: " + ", ".join(stale))
+    issues = unresolved_issues(doc)
     coverage = {"level": "not_checked", "word_parents_checked": 0, "words_checked": 0}
     if reference is not None:
         original = rows(reference)
@@ -182,24 +191,63 @@ def check(doc, reference=None, mode="rebuild", require_target=True, cps=12.0):
                 failures.append("fixed: IDs/order/count/times differ from reference")
         else:
             expected = {r["id"] for r in original}
-            actual = {p for r in current for p in r.get("parent_ids", [r["id"]])}
+            actual = {p for r in coverage_rows for p in r.get("parent_ids", [r["id"]])}
             if expected - actual:
                 failures.append("missing source IDs: " + ", ".join(sorted(expected - actual)))
             if actual - expected:
                 failures.append("unknown source IDs: " + ", ".join(sorted(actual - expected)))
-            coverage = check_word_ranges(current, original, failures, warnings)
-    return {"ok": not failures, "cues": len(current), "failures": failures, "warnings": warnings,
+            coverage = check_word_ranges(coverage_rows, original, failures, warnings)
+            if omitted:
+                count_words = lambda seq: sum(r['end_word_index_exclusive'] - r['start_word_index'] for u in seq for r in u.get('source_word_ranges', []))
+                coverage.update(displayed_words=count_words(current), omitted_words=count_words(omitted), omitted_units=len(omitted))
+    blockers = []
+    if status == "final":
+        if reference is None:
+            blockers.append("Final export requires the original source reference for coverage/fixed-axis checks")
+        elif reference is doc:
+            blockers.append("Current document cannot be its own original reference")
+        blockers.extend(r["message"] for r in unhandled)
+        blockers.extend("Unresolved issue: " + i["detail"] for i in issues)
+    source_blockers = audit_source(doc, reference) if require_target else []
+    return {"ok": not failures and not blockers and not source_blockers, "structural_ok": not failures, "status": status,
+            "cues": len(current), "failures": failures, "warnings": warnings, "final_blockers": blockers,
+            "display_profile": effective_profile, "display_risks": risks,
+            "accepted_exceptions": accepted, "stale_exceptions": stale, "unhandled_risks": len(unhandled),
+            "unresolved_issues": issues, "source_blockers": source_blockers,
             "coverage": coverage, "meaning_checked": False,
-            "note": "Coverage validates declared mappings, not semantic completeness or audio accuracy."}
+            "note": "Coverage and declared exceptions do not certify meaning, independent review, listening or viewing."}
 
 
 def assemble(parts, reference, mode):
     merged = {"schema_version": 1, "timing_mode": mode, "segments": []}
+    for key in ("display_profile", "domain"):
+        choices = [part[key] for part in parts if key in part]
+        if key in reference:
+            choices.append(reference[key])
+        if choices:
+            if any(value != choices[0] for value in choices):
+                raise ValueError(f"Conflicting {key}; choose one project setting before assembly")
+            merged[key] = copy.deepcopy(choices[0])
+    provenance = []
     for part in parts:
         merged["segments"].extend(copy.deepcopy(rows(part)))
+        for key in ("issues", "display_exceptions", "units", "source_constraints", "omitted_units"):
+            if key in part:
+                if not isinstance(part[key], list):
+                    raise ValueError(f"{key} must be a list")
+                merged.setdefault(key, []).extend(copy.deepcopy(part[key]))
+        if part.get("meta"):
+            provenance.append(copy.deepcopy(part["meta"]))
+        plan = part.get("boundary_plan")
+        if plan:
+            merged.setdefault("boundary_plan", {"boundaries": []})["boundaries"].extend(copy.deepcopy(plan["boundaries"]))
+    if provenance:
+        merged["meta"] = {"assembly_parts": provenance}
+        if len(parts) == 1:
+            merged["meta"].update(copy.deepcopy(parts[0].get("meta", {})))
     report = check(merged, reference, mode)
     if not report["ok"]:
-        raise ValueError("; ".join(report["failures"]))
+        raise ValueError("; ".join(report["failures"] + report["source_blockers"] + report["final_blockers"]))
     return merged
 
 
@@ -221,23 +269,29 @@ ASS_HEADER = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
 PlayResY: 1080
+WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Microsoft YaHei,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,60,60,60,1
+Style: Default,Source Han Sans SC,64,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,60,60,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def export(doc, fmt, bilingual=False):
-    report = check(doc)
+def export(doc, fmt, bilingual=False, *, reference=None, mode=None,
+           status="draft", profile=None, exceptions=None):
+    if fmt not in ("srt", "vtt", "ass"):
+        raise ValueError("Unsupported export format")
+    report = check(doc, reference, mode, status=status, profile=profile, exceptions=exceptions, bilingual=bilingual)
     if not report["ok"]:
-        raise ValueError("; ".join(report["failures"]))
+        raise ValueError("; ".join(report["failures"] + report["source_blockers"] + report["final_blockers"]))
     output = [ASS_HEADER] if fmt == "ass" else ["WEBVTT\n\n"] if fmt == "vtt" else []
     for index, item in enumerate(rows(doc), 1):
         text = item["target"]
+        if not bilingual and report["display_profile"]["max_lines"] == 1 and ("\n" in text or "\r" in text):
+            raise ValueError(f"{item['id']}: single-line export requires a reviewed single-line target")
         if bilingual:
             text += "\n" + item["source"]
         a, b = stamp(item["start_ms"], fmt), stamp(item["end_ms"], fmt)
@@ -248,7 +302,7 @@ def export(doc, fmt, bilingual=False):
                 raise ValueError("Literal braces/backslashes need a dedicated ASS authoring tool")
             output.append(f"Dialogue: 0,{a},{b},Default,,0,0,0,," + text.replace("\n", "\\N") + "\n")
         else:
-            ident = item["id"] if fmt == "vtt" or doc.get("timing_mode") == "fixed" else str(index)
+            ident = item["id"] if fmt == "vtt" or (mode or doc.get("timing_mode")) == "fixed" else str(index)
             if fmt == "srt" and not ident.isdecimal():
                 raise ValueError("SRT needs numeric IDs; retain nonnumeric IDs in JSON or export VTT")
             output.append(f"{ident}\n{a} --> {b}\n{text}\n\n")
@@ -282,7 +336,10 @@ def main():
     p.add_argument("input"); p.add_argument("--reference")
     p.add_argument("--mode", choices=("fixed", "rebuild"))
     p.add_argument("--source-only", action="store_true")
-    p.add_argument("--cps", type=float, default=12)
+    p.add_argument("--cps", type=float)
+    p.add_argument("--status", choices=("draft", "final"), default="draft")
+    p.add_argument("--profile"); p.add_argument("--exceptions")
+    p.add_argument("--bilingual", action="store_true")
     p = sub.add_parser("assemble")
     p.add_argument("parts", nargs="+"); p.add_argument("--reference", required=True)
     p.add_argument("--mode", choices=("fixed", "rebuild"), required=True)
@@ -290,16 +347,24 @@ def main():
     p = sub.add_parser("export")
     p.add_argument("input"); p.add_argument("--format", choices=("srt", "vtt", "ass"), default="srt")
     p.add_argument("--bilingual", action="store_true"); p.add_argument("--output", required=True)
+    p.add_argument("--status", choices=("draft", "final"), required=True)
+    p.add_argument("--reference"); p.add_argument("--mode", choices=("fixed", "rebuild"))
+    p.add_argument("--profile"); p.add_argument("--exceptions")
     p = sub.add_parser("index-map")
     p.add_argument("input"); p.add_argument("--exported", required=True)
     p.add_argument("--bilingual", action="store_true"); p.add_argument("--output", required=True)
     args = parser.parse_args()
+    if (args.command in ("check", "export") and args.status == "final" and args.reference
+            and Path(args.input).samefile(args.reference)):
+        raise ValueError("Current file cannot be its own original reference; use the preserved source file")
     if args.command == "import":
         doc = import_file(args.input); write(args.output, doc)
     elif args.command == "check":
         doc = load(args.input)
         result = check(doc, load(args.reference) if args.reference else None,
-                       args.mode or doc.get("timing_mode", "rebuild"), not args.source_only, args.cps)
+                       args.mode, not args.source_only, args.cps, status=args.status,
+                       profile=load(args.profile) if args.profile else None,
+                       exceptions=load(args.exceptions) if args.exceptions else None, bilingual=args.bilingual)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result["ok"] else 1
     elif args.command == "assemble":
@@ -307,7 +372,14 @@ def main():
     elif args.command == "index-map":
         write(args.output, index_map(load(args.input), args.exported, args.bilingual))
     else:
-        write(args.output, export(load(args.input), args.format, args.bilingual))
+        doc = load(args.input)
+        options = dict(reference=load(args.reference) if args.reference else None, mode=args.mode, status=args.status,
+                       profile=load(args.profile) if args.profile else None,
+                       exceptions=load(args.exceptions) if args.exceptions else None)
+        write(args.output, export(doc, args.format, args.bilingual, **options))
+        print(json.dumps({"output": str(Path(args.output).resolve()), "status": args.status,
+                          "check": check(doc, bilingual=args.bilingual, **options)}, ensure_ascii=False))
+        return 0
     print(json.dumps({"output": str(Path(args.output).resolve())}, ensure_ascii=False))
     return 0
 

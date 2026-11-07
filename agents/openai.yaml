@@ -1,4 +1,4 @@
 interface:
-  display_name: "长视频字幕组 · S17 Team 候选"
-  short_description: "组长带领稳定的专家组员完成跨领域长视频字幕，直接修订并按实际影响质检"
+  display_name: "长视频字幕组 · S17 Team r4.12 测试版"
+  short_description: "保留三岗位与独立审校，按证据区分人物指称和词形，统一制作长视频字幕"
   default_prompt: "使用 $long-video-subtitles，由主 agent 担任组长，安排专家子 agent 完成这个长视频的字幕制作。"
